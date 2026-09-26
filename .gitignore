@@ -1,0 +1,9 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node (only if you add a dev server later)
+node_modules/
+npm-debug.log*

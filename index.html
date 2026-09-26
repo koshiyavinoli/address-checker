@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Address Coverage Checker</title>
+  <meta name="description" content="Check whether a physical address falls strictly inside a configurable coverage polygon." />
+
+  <!-- Leaflet (map) -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="app__header">
+      <h1>Address Coverage Checker</h1>
+      <p class="app__subtitle" id="subtitle">
+        Type an address to see whether it falls <strong>strictly inside</strong>
+        the coverage zone.
+      </p>
+    </header>
+
+    <form id="search-form" class="search" autocomplete="off">
+      <label class="search__label" for="address">Physical address</label>
+      <div class="search__row">
+        <input
+          id="address"
+          name="address"
+          type="text"
+          class="search__input"
+          placeholder="Start typing an address…"
+          required
+        />
+        <button id="check-btn" type="submit" class="search__button">Check</button>
+      </div>
+      <p class="search__hint">Powered by OpenStreetMap — please allow up to a second between checks.</p>
+    </form>
+
+    <section id="result" class="result" aria-live="polite" hidden>
+      <div class="result__badge" id="result-badge">—</div>
+      <div class="result__details">
+        <p id="result-headline" class="result__headline"></p>
+        <p id="result-address" class="result__address"></p>
+        <p id="result-coords" class="result__coords"></p>
+      </div>
+    </section>
+
+    <div id="map" class="map" role="img" aria-label="Map of the coverage zone"></div>
+
+    <footer class="app__footer">
+      <span id="footer-zone">Coverage area</span>
+      <span>Geocoding &amp; tiles © OpenStreetMap contributors</span>
+    </footer>
+  </main>
+
+  <!-- Leaflet -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <!-- Turf.js (geospatial point-in-polygon) -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
