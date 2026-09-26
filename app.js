@@ -1,36 +1,93 @@
-/* Address Coverage Checker — client-side logic.
- *
- * Flow:
- *   1. Geocode the typed address via OpenStreetMap Nominatim (free, keyless).
- *   2. Test the resulting point against the coverage polygon with Turf.js
- *      (strict interior — boundary counts as "outside").
- *   3. Render the verdict and plot everything on a Leaflet map.
- *
- * The coverage area comes entirely from the ZONE object in config.js — edit
- * that file to retarget the app; nothing here needs to change.
+/**
+ * Address Coverage Checker — UI + orchestration.
+ * ---------------------------------------------------------------------------
+ * Wires the coverage config (config.js) and the geospatial helpers (geo.js)
+ * to the DOM and a Leaflet map. Keeps all DOM/state handling here so geo.js
+ * stays pure.
  */
+import { ZONE } from "./config.js";
+import {
+  toPolygon,
+  centerLatLon,
+  isStrictlyInside,
+  distanceToBoundaryKm,
+  formatDistance,
+  geocodeAddress,
+  reverseGeocode,
+} from "./geo.js";
 
-// --- Build a closed GeoJSON polygon (Turf wants [lon, lat] and a closed ring) ---
-const RING = ZONE.polygon.map(([lat, lon]) => [lon, lat]);
-RING.push(RING[0]); // close the ring
-const COVERAGE_GEOJSON = turf.polygon([RING]);
+// --- Coverage geometry (built once) ---
+const POLYGON = toPolygon(ZONE.polygon);
+const CENTER = ZONE.center || centerLatLon(POLYGON);
 
-// --- Fill config-driven copy ---
-document.getElementById("subtitle").innerHTML =
-  `Type an address to see whether it falls <strong>strictly inside</strong> the ` +
-  `${ZONE.name} coverage zone.`;
-document.getElementById("footer-zone").textContent =
-  `Coverage area: ${ZONE.name}${ZONE.region ? ", " + ZONE.region : ""} · ` +
-  `${ZONE.polygon.length}-vertex polygon`;
-document.getElementById("address").placeholder =
-  `e.g. an address in ${ZONE.name}${ZONE.region ? ", " + ZONE.region : ""}`;
+// Live zone metadata; seeded from config, completed by reverse geocoding.
+const zone = {
+  name: ZONE.name || "",
+  region: ZONE.region || "",
+  countryCode: ZONE.countryCode || "",
+};
 
-// --- Map setup ---
-const map = L.map("map").setView(ZONE.center, 14);
+// --- DOM references ---
+const el = {
+  form: document.getElementById("search-form"),
+  input: document.getElementById("address"),
+  button: document.getElementById("check-btn"),
+  subtitle: document.getElementById("subtitle"),
+  examples: document.getElementById("examples"),
+  result: document.getElementById("result"),
+  badge: document.getElementById("result-badge"),
+  headline: document.getElementById("result-headline"),
+  address: document.getElementById("result-address"),
+  meta: document.getElementById("result-meta"),
+};
 
+// --- Copy that depends on the (possibly async) zone name ---
+const zoneLabel = () => (zone.name ? `the ${zone.name} zone` : "the coverage zone");
+
+function refreshCopy() {
+  el.subtitle.innerHTML =
+    `Enter an address to check whether it falls <strong>inside</strong> ${zoneLabel()}.`;
+  el.input.placeholder = zone.name ? `Try an address in ${zone.name}…` : "Enter a physical address…";
+
+  // Keep an on-screen verdict's wording in sync once the name resolves.
+  const v = el.result.dataset.verdict;
+  if (v === "inside") el.headline.textContent = `Inside ${zoneLabel()}`;
+  if (v === "outside") el.headline.textContent = `Outside ${zoneLabel()}`;
+
+  renderExamples();
+}
+
+function renderExamples() {
+  if (!zone.name) {
+    el.examples.hidden = true;
+    return;
+  }
+  el.examples.hidden = false;
+  el.examples.innerHTML = "";
+  const label = document.createElement("span");
+  label.className = "examples__label";
+  label.textContent = "Try:";
+  el.examples.appendChild(label);
+
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "chip";
+  chip.textContent = `${zone.name}${zone.region ? ", " + zone.region : ""}`;
+  chip.addEventListener("click", () => {
+    el.input.value = chip.textContent;
+    el.form.requestSubmit();
+  });
+  el.examples.appendChild(chip);
+}
+
+// --- Map ---
+const map = L.map("map", { zoomControl: true }).setView(CENTER, 14);
+
+// Standard OpenStreetMap basemap — free & keyless.
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 20,
+  // Required attribution for the free OSM tile layer (kept minimal).
+  attribution: '&copy; OpenStreetMap',
 }).addTo(map);
 
 const polygonLayer = L.polygon(ZONE.polygon, {
@@ -42,112 +99,108 @@ const polygonLayer = L.polygon(ZONE.polygon, {
 
 map.fitBounds(polygonLayer.getBounds(), { padding: [30, 30] });
 
-let resultMarker = null;
+let marker = null;
 
-// --- DOM references ---
-const form = document.getElementById("search-form");
-const input = document.getElementById("address");
-const button = document.getElementById("check-btn");
-const resultEl = document.getElementById("result");
-const badgeEl = document.getElementById("result-badge");
-const headlineEl = document.getElementById("result-headline");
-const addressEl = document.getElementById("result-address");
-const coordsEl = document.getElementById("result-coords");
-
-// --- Geocoding via Nominatim ---
-async function geocode(query) {
-  const url = new URL("https://nominatim.openstreetmap.org/search");
-  url.searchParams.set("q", query);
-  url.searchParams.set("format", "jsonv2");
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("addressdetails", "1");
-  // Optionally bias results toward a country to improve local accuracy.
-  if (ZONE.countryCode) {
-    url.searchParams.set("countrycodes", ZONE.countryCode);
-  }
-
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!res.ok) {
-    throw new Error(`Geocoding service returned ${res.status}`);
-  }
-  const data = await res.json();
-  if (!data.length) return null;
-
-  const hit = data[0];
-  return {
-    lat: parseFloat(hit.lat),
-    lon: parseFloat(hit.lon),
-    label: hit.display_name,
-  };
-}
-
-// --- Result rendering ---
-function showState(kind, { headline, address, coords } = {}) {
-  resultEl.hidden = false;
-  resultEl.classList.remove("result--inside", "result--outside", "result--error", "result--loading");
-  resultEl.classList.add(`result--${kind}`);
-
-  const badges = { loading: "…", inside: "✓", outside: "✕", error: "!" };
-  badgeEl.textContent = badges[kind] || "—";
-  headlineEl.textContent = headline || "";
-  addressEl.textContent = address || "";
-  coordsEl.textContent = coords || "";
-}
-
-function plotPoint(lat, lon, inside) {
-  if (resultMarker) map.removeLayer(resultMarker);
-  resultMarker = L.circleMarker([lat, lon], {
+function plotPoint(lat, lon, inside, label) {
+  if (marker) map.removeLayer(marker);
+  marker = L.circleMarker([lat, lon], {
     radius: 9,
     color: inside ? "#16a34a" : "#dc2626",
     fillColor: inside ? "#22c55e" : "#ef4444",
     fillOpacity: 0.9,
     weight: 2,
-  }).addTo(map);
+  })
+    .addTo(map)
+    .bindPopup(label, { closeButton: false })
+    .openPopup();
 
-  const bounds = polygonLayer.getBounds().extend([lat, lon]);
-  map.fitBounds(bounds, { padding: [40, 40] });
+  map.fitBounds(polygonLayer.getBounds().extend([lat, lon]), { padding: [45, 45] });
 }
 
-// --- Form handling ---
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const query = input.value.trim();
-  if (!query) return;
+// --- Result rendering (one function drives every visible state) ---
+function showState(kind, { headline = "", address = "", meta = "", verdict = "" } = {}) {
+  el.result.hidden = false;
+  el.result.dataset.verdict = verdict;
+  el.result.className = `result result--${kind}`;
 
-  button.disabled = true;
+  const badges = { loading: "", inside: "✓", outside: "✕", notfound: "?", error: "!" };
+  el.badge.textContent = badges[kind] ?? "";
+  el.badge.classList.toggle("result__badge--spin", kind === "loading");
+
+  el.headline.textContent = headline;
+  el.address.textContent = address;
+  el.meta.textContent = meta;
+}
+
+function setBusy(busy) {
+  el.button.disabled = busy;
+  el.button.classList.toggle("is-busy", busy);
+  el.button.textContent = busy ? "Checking…" : "Check";
+}
+
+// --- Main check ---
+async function check(query) {
+  setBusy(true);
   showState("loading", { headline: "Looking up address…" });
 
   try {
-    const place = await geocode(query);
+    const place = await geocodeAddress(query, zone.countryCode);
 
     if (!place) {
-      showState("error", {
+      showState("notfound", {
         headline: "Address not found",
-        address: "We couldn't locate that address. Try adding a city or more detail.",
+        address: "We couldn’t locate that address. Try adding a street, city, or postcode.",
       });
       return;
     }
 
-    const point = turf.point([place.lon, place.lat]);
-    const inside = turf.booleanPointInPolygon(point, COVERAGE_GEOJSON, {
-      ignoreBoundary: true, // strict interior — boundary is treated as outside
-    });
+    const inside = isStrictlyInside(place.lat, place.lon, POLYGON);
+    const distance = distanceToBoundaryKm(place.lat, place.lon, POLYGON);
+    const coords = `${place.lat.toFixed(6)}, ${place.lon.toFixed(6)}`;
 
     showState(inside ? "inside" : "outside", {
-      headline: inside
-        ? `Inside the ${ZONE.name} coverage zone`
-        : `Outside the ${ZONE.name} coverage zone`,
+      verdict: inside ? "inside" : "outside",
+      headline: inside ? `Inside ${zoneLabel()}` : `Outside ${zoneLabel()}`,
       address: place.label,
-      coords: `${place.lat.toFixed(6)}, ${place.lon.toFixed(6)}`,
+      meta: inside
+        ? `${formatDistance(distance)} inside the boundary · ${coords}`
+        : `${formatDistance(distance)} from the zone · ${coords}`,
     });
 
-    plotPoint(place.lat, place.lon, inside);
+    plotPoint(place.lat, place.lon, inside, place.label);
   } catch (err) {
     showState("error", {
       headline: "Something went wrong",
-      address: err.message || "Please try again in a moment.",
+      address: err.message || "Please check your connection and try again.",
     });
   } finally {
-    button.disabled = false;
+    setBusy(false);
   }
+}
+
+// --- Events ---
+el.form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const query = el.input.value.trim();
+  if (query) check(query);
 });
+
+// --- Init ---
+refreshCopy();
+el.input.focus();
+
+// Name the area from the polygon centre (unless config already set everything).
+(async () => {
+  if (zone.name && zone.region && zone.countryCode) return;
+  try {
+    const [lat, lon] = CENTER;
+    const info = await reverseGeocode(lat, lon, ZONE.nameZoom || 12);
+    zone.name = zone.name || info.name;
+    zone.region = zone.region || info.region;
+    zone.countryCode = zone.countryCode || info.countryCode;
+  } catch {
+    /* keep generic copy if reverse geocoding is unavailable */
+  } finally {
+    refreshCopy();
+  }
+})();
