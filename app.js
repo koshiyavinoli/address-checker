@@ -32,6 +32,7 @@ const el = {
   form: document.getElementById("search-form"),
   input: document.getElementById("address"),
   button: document.getElementById("check-btn"),
+  clearButton: document.getElementById("clear-btn"),
   subtitle: document.getElementById("subtitle"),
   examples: document.getElementById("examples"),
   result: document.getElementById("result"),
@@ -178,11 +179,46 @@ async function check(query) {
   }
 }
 
+// A real address must contain at least one letter — not only digits,
+// whitespace or symbols (e.g. "12345" or "][')\;" are rejected).
+const hasLetter = (s) => /\p{L}/u.test(s);
+
 // --- Events ---
 el.form.addEventListener("submit", (event) => {
   event.preventDefault();
   const query = el.input.value.trim();
-  if (query) check(query);
+
+  el.input.setCustomValidity("");
+  if (!query) {
+    el.input.setCustomValidity("Please enter an address.");
+    el.input.reportValidity();
+    return;
+  }
+  if (!hasLetter(query)) {
+    el.input.setCustomValidity(
+      "Please enter a valid address. It should include a street or place name, not only numbers or symbols."
+    );
+    el.input.reportValidity();
+    return;
+  }
+
+  check(query);
+});
+
+// Clear the custom validity as soon as the user edits the field.
+el.input.addEventListener("input", () => el.input.setCustomValidity(""));
+
+el.clearButton.addEventListener("click", () => {
+  el.input.value = "";
+  el.input.setCustomValidity("");
+  el.result.hidden = true;
+  el.result.dataset.verdict = "";
+  if (marker) {
+    map.removeLayer(marker);
+    marker = null;
+  }
+  map.fitBounds(polygonLayer.getBounds(), { padding: [30, 30] });
+  el.input.focus();
 });
 
 // --- Init ---

@@ -20,16 +20,17 @@
 
     <form id="search-form" class="search" autocomplete="off">
       <label class="search__label" for="address">Physical address</label>
-      <div class="search__row">
-        <input
-          id="address"
-          name="address"
-          type="text"
-          class="search__input"
-          placeholder="Enter a physical address…"
-          required
-        />
+      <input
+        id="address"
+        name="address"
+        type="text"
+        class="search__input"
+        placeholder="Enter a physical address…"
+        required
+      />
+      <div class="search__actions">
         <button id="check-btn" type="submit" class="search__button">Check</button>
+        <button id="clear-btn" type="button" class="search__button search__button--ghost">Clear</button>
       </div>
       <div class="examples" id="examples" hidden></div>
     </form>

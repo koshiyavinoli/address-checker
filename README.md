@@ -130,8 +130,8 @@ up to **500 requests/week (~70/day)**:
   attribution.
 - **Compute** (the point-in-polygon test) happens **in the user's browser** via
   Turf.js. No server CPU is consumed.
-- **Hosting** is static files on **GitHub Pages** (or Netlify/Cloudflare Pages),
-  all of which host public static sites for free.
+- **Hosting** is static files on **GitHub Pages**,
+  which host public static sites for free.
 
 Net operational cost at 500 req/week: **$0.00**.
 
