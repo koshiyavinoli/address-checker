@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Address Coverage Checker</title>
-  <meta name="description" content="Check whether a physical address falls inside a configurable coverage polygon." />
+  <meta name="description" content="Check whether a New Zealand address falls inside a configurable coverage polygon." />
 
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
   <link rel="stylesheet" href="styles.css" />
@@ -19,15 +19,29 @@
     </header>
 
     <form id="search-form" class="search" autocomplete="off">
-      <label class="search__label" for="address">Physical address</label>
-      <input
-        id="address"
-        name="address"
-        type="text"
-        class="search__input"
-        placeholder="Enter a physical address…"
-        required
-      />
+      <label class="search__label" for="address">New Zealand address</label>
+      <div class="combo">
+        <input
+          id="address"
+          name="address"
+          type="text"
+          class="search__input"
+          placeholder="Start typing a New Zealand address…"
+          maxlength="200"
+          spellcheck="false"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded="false"
+          aria-controls="suggestions"
+          aria-describedby="address-hint"
+          required
+        />
+        <ul id="suggestions" class="suggestions" role="listbox" aria-label="Address suggestions" hidden></ul>
+      </div>
+      <p id="address-hint" class="search__hint">
+        Format: unit/number street, suburb, town or city, postcode.
+        For example: <span class="search__example">2/15 Queen Street, Auckland Central, Auckland 1010</span>
+      </p>
       <div class="search__actions">
         <button id="check-btn" type="submit" class="search__button">Check</button>
         <button id="clear-btn" type="button" class="search__button search__button--ghost">Clear</button>
@@ -35,12 +49,18 @@
       <div class="examples" id="examples" hidden></div>
     </form>
 
+    <section id="candidates" class="candidates" aria-labelledby="candidates-title" hidden>
+      <p id="candidates-title" class="candidates__title">More than one address matches. Pick the one you mean:</p>
+      <ul id="candidates-list" class="candidates__list"></ul>
+    </section>
+
     <section id="result" class="result" aria-live="polite" hidden>
       <div class="result__badge" id="result-badge"></div>
       <div class="result__details">
         <p id="result-headline" class="result__headline"></p>
         <p id="result-address" class="result__address"></p>
         <p id="result-meta" class="result__meta"></p>
+        <button id="retry-btn" type="button" class="result__retry" hidden>Try again</button>
       </div>
     </section>
 

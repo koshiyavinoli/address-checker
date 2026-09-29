@@ -7,3 +7,6 @@ Thumbs.db
 # Node (only if you add a dev server later)
 node_modules/
 npm-debug.log*
+
+# AWS SAM build output
+.aws-sam/

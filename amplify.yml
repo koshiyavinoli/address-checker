@@ -1,0 +1,19 @@
+# AWS Amplify Hosting build spec (frontend only; the API is deployed with SAM
+# from backend/template.yaml).
+#
+# Set the Amplify environment variable API_BASE_URL to the SAM stack's
+# `ApiUrl` output, e.g. https://abc123.execute-api.ap-southeast-2.amazonaws.com/prod
+version: 1
+frontend:
+  phases:
+    build:
+      commands:
+        - test -n "$API_BASE_URL" || (echo "API_BASE_URL is not set" && exit 1)
+        - mkdir -p dist
+        # Publish only the static site — never backend/ or other repo files.
+        - cp index.html styles.css app.js api.js config.js geo.js dist/
+        - echo "export const API_BASE = \"${API_BASE_URL%/}\";" > dist/api-config.js
+  artifacts:
+    baseDirectory: dist
+    files:
+      - "**/*"

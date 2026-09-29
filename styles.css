@@ -89,6 +89,83 @@ body {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
 }
 
+.search__hint {
+  margin: -0.4rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.search__example { white-space: nowrap; font-style: italic; }
+
+/* Autocomplete combobox */
+.combo { position: relative; }
+
+.suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 10; /* above the Leaflet map */
+  max-height: 16rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.suggestions__item {
+  padding: 0.55rem 0.7rem;
+  font-size: 0.92rem;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.suggestions__item:hover,
+.suggestions__item[aria-selected="true"] {
+  background: var(--chip-bg);
+  color: var(--chip-text);
+}
+
+/* Ambiguous-address picker */
+.candidates {
+  margin: 1.25rem 0;
+  padding: 1rem 1.25rem;
+  border-radius: 14px;
+  border: 1px solid var(--error);
+  background: var(--error-bg);
+  box-shadow: var(--shadow);
+}
+.candidates__title { margin: 0 0 0.6rem; font-weight: 700; color: var(--error); }
+.candidates__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.candidates__option {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  font: inherit;
+  font-size: 0.92rem;
+  text-align: left;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.candidates__option:hover,
+.candidates__option:focus-visible {
+  border-color: var(--brand);
+  background: var(--chip-bg);
+  outline: none;
+}
+
 .search__actions { display: flex; gap: 0.6rem; align-items: center; justify-content: center; }
 
 .search__button {
@@ -107,7 +184,7 @@ body {
 .search__button:disabled { opacity: 0.75; cursor: progress; }
 
 .search__button--ghost {
-  min-width: 7.5rem;
+  min-width: 0;
   color: var(--muted);
   background: transparent;
   border: 1px solid var(--border);
@@ -174,6 +251,20 @@ body {
 .result__address { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
 .result__meta { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 
+.result__retry {
+  margin-top: 0.7rem;
+  padding: 0.45rem 1rem;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--error);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.result__retry:hover { filter: brightness(1.1); }
+
 .result--inside { background: var(--inside-bg); border-color: var(--inside); }
 .result--inside .result__badge { background: var(--inside); }
 .result--inside .result__headline { color: var(--inside); }
@@ -196,7 +287,8 @@ body {
   .result--inside { background: rgba(22, 163, 74, 0.15); }
   .result--outside { background: rgba(220, 38, 38, 0.15); }
   .result--notfound,
-  .result--error { background: rgba(180, 83, 9, 0.18); }
+  .result--error,
+  .candidates { background: rgba(180, 83, 9, 0.18); }
 }
 
 .map {
