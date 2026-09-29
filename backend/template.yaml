@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Address Checker API. API Gateway (throttled) -> Lambda
+  (validation + geocoder proxy) -> DynamoDB cache.
+
+Parameters:
+  AllowedOrigin:
+    Type: String
+    Default: "*"
+    Description: >
+      The browser origin allowed by CORS, e.g. https://main.d1234abcd.amplifyapp.com
+      (your Amplify domain). Use "*" only while testing.
+  UserAgent:
+    Type: String
+    Default: "address-checker/1.0 (+https://github.com/koshiyavinoli/address-checker)"
+    Description: Identifying User-Agent sent to Nominatim/Photon (required by their usage policies).
+  # API Gateway throttling (token bucket). Limits are for the whole API, not
+  # per client; requests over the limit get 429 before Lambda runs, so cost
+  # and upstream traffic have a hard ceiling.
+  SuggestRateLimit:
+    Type: Number
+    Default: 5
+    Description: Steady-state requests/second for /suggest (autocomplete, Photon).
+  SuggestBurstLimit:
+    Type: Number
+    Default: 10
+    Description: Burst size for /suggest.
+  LookupRateLimit:
+    Type: Number
+    Default: 1
+    Description: >
+      Steady-state requests/second for /geocode and /reverse each (Nominatim,
+      whose usage policy allows at most 1 request/second).
+  LookupBurstLimit:
+    Type: Number
+    Default: 3
+    Description: Burst size for /geocode and /reverse.
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 10
+
+Resources:
+  # Shared geocoding cache. Items expire via TTL on `expiresAt`.
+  CacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      EndpointConfiguration:
+        Type: REGIONAL
+      # Per-route throttling. "/*" is the fallback for any other route; the
+      # named routes override it. Paths are encoded with ~1 for "/".
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingRateLimit: 1
+          ThrottlingBurstLimit: 2
+          MetricsEnabled: true
+        - ResourcePath: "/~1suggest"
+          HttpMethod: GET
+          ThrottlingRateLimit: !Ref SuggestRateLimit
+          ThrottlingBurstLimit: !Ref SuggestBurstLimit
+          MetricsEnabled: true
+        - ResourcePath: "/~1geocode"
+          HttpMethod: GET
+          ThrottlingRateLimit: !Ref LookupRateLimit
+          ThrottlingBurstLimit: !Ref LookupBurstLimit
+          MetricsEnabled: true
+        - ResourcePath: "/~1reverse"
+          HttpMethod: GET
+          ThrottlingRateLimit: !Ref LookupRateLimit
+          ThrottlingBurstLimit: !Ref LookupBurstLimit
+          MetricsEnabled: true
+      # Give API Gateway's own errors (e.g. 429 throttled) CORS headers so the
+      # browser can read them instead of reporting an opaque network error.
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !Sub "'${AllowedOrigin}'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !Sub "'${AllowedOrigin}'"
+
+  GeoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler.handler
+      Description: Validates address lookups and proxies them to the geocoders, with caching.
+      # Hard cap on parallel upstream calls, whatever the API throttle says.
+      ReservedConcurrentExecutions: 5
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref CacheTable
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+          USER_AGENT: !Ref UserAgent
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt CacheTable.Arn
+      Events:
+        Suggest:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /suggest
+            Method: GET
+        Geocode:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /geocode
+            Method: GET
+        Reverse:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /reverse
+            Method: GET
+
+  GeoFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GeoFunction}
+      RetentionInDays: 14
+
+Outputs:
+  ApiUrl:
+    Description: Set this as API_BASE_URL in the Amplify app's environment variables.
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Api.Stage}"
+  CacheTableName:
+    Value: !Ref CacheTable

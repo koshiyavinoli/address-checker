@@ -1,0 +1,7 @@
+{
+  "name": "address-checker-function",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lambda function code. No dependencies: the AWS SDK v3 ships with the Node.js runtime."
+}

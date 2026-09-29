@@ -1,0 +1,13 @@
+{
+  "name": "address-checker-backend",
+  "private": true,
+  "type": "module",
+  "description": "API Gateway + Lambda + DynamoDB backend for the address checker",
+  "scripts": {
+    "dev": "node dev-server.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
